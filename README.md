@@ -6,9 +6,20 @@ Experimental Wi-Fi CSI acquisition and RF occupancy reconstruction using one ESP
 
 ## Architecture
 
-- `firmware/`: ESP-IDF firmware. Connects to a 2.4 GHz access point, receives CSI from Wi-Fi frames, and streams compact UDP JSON packets to a computer on the same LAN.
+- `firmware/`: ESP-IDF firmware. Creates a protected Wi-Fi setup access point, serves a local configuration page, stores router credentials in NVS, connects to a 2.4 GHz access point, receives CSI from Wi-Fi frames, and streams compact UDP JSON packets to a computer on the same LAN.
 - `engine/`: Python receiver, per-transmitter baseline tracking, Fresnel-zone sensitivity matrix, non-negative sparse FISTA reconstruction, and heatmap output.
 - `.github/workflows/`: ESP-IDF firmware build and Python tests.
+
+## Wi-Fi setup
+
+1. Flash the firmware to the ESP32-S3.
+2. From a phone or computer, connect to Wi-Fi network `RF-TOMO-SETUP`.
+3. Setup password: `rf-tomo-setup`.
+4. Open `http://192.168.4.1/` and enter the router's 2.4 GHz SSID and password.
+5. The device saves credentials in NVS and connects while keeping the setup AP available.
+6. Use the same page to reset saved Wi-Fi credentials and configure another router.
+
+The setup AP is protected with WPA2. Keep the setup password private and change it in `firmware/main/main.c` before distributing devices.
 
 ## Hardware
 
@@ -19,17 +30,17 @@ Experimental Wi-Fi CSI acquisition and RF occupancy reconstruction using one ESP
 
 ## Quick start
 
-1. Configure Wi-Fi and collector settings through `idf.py menuconfig`.
-2. Build with ESP-IDF 5.3.x: `idf.py -C firmware set-target esp32s3` then `idf.py -C firmware build`.
-3. Install Python dependencies: `python -m pip install -r engine/requirements.txt`.
-4. Start the collector: `python engine/collector.py --bind 0.0.0.0 --port 5005`.
-5. Flash the firmware and monitor it. Set `CONFIG_TOMO_WIFI_SSID`, `CONFIG_TOMO_WIFI_PASSWORD`, `CONFIG_TOMO_COLLECTOR_IP`, and `CONFIG_TOMO_COLLECTOR_PORT` in menuconfig.
+1. Install Python dependencies: `python -m pip install -r engine/requirements.txt`.
+2. Start the collector: `python engine/collector.py --bind 0.0.0.0 --port 5005`.
+3. Configure the collector IPv4 address and UDP port in firmware menuconfig if the defaults do not match your computer.
+4. Flash the firmware, connect to `RF-TOMO-SETUP`, and configure router Wi-Fi through `http://192.168.4.1/`.
 
 The GitHub Actions workflow builds the firmware and runs engine tests on pushes and pull requests. Firmware binaries are uploaded as workflow artifacts; tagged releases also publish a ZIP.
 
 ## Important limitations
 
 - CSI availability and fields vary by ESP-IDF version, chip, frame type, and Wi-Fi environment.
+- CSI capture starts after the station obtains an IP address from the router.
 - Promiscuous/CSI reception is not guaranteed for every transmitter or every packet.
 - One receiver does not provide true multi-angle tomography unless multiple spatially distinct transmitter-receiver paths are actually observed and their positions are known.
 - The initial implementation uses received CSI amplitude as a coarse change feature. Phase calibration, clock/CFO compensation, packet grouping, and site calibration remain research work.
