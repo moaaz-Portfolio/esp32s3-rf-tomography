@@ -97,8 +97,6 @@ static void udp_task(void *arg)
 
 static void start_wifi_csi(void)
 {
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
     esp_netif_create_default_wifi_sta();
 
     wifi_init_config_t init_cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -145,6 +143,10 @@ void app_main(void)
         ESP_ERROR_CHECK(nvs_flash_erase());
         ESP_ERROR_CHECK(nvs_flash_init());
     }
+
+    /* Initialize lwIP/TCP-IP before creating any BSD socket. */
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     s_csi_queue = xQueueCreate(QUEUE_DEPTH, sizeof(csi_packet_t));
     if (!s_csi_queue) {
