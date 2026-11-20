@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <arpa/inet.h>
 
 #include "freertos/FreeRTOS.h"
@@ -30,6 +31,9 @@
 #define WIFI_NVS_PASS_KEY "password"
 #define SETUP_AP_SSID "RF-TOMO-SETUP"
 #define SETUP_AP_PASSWORD "rf-tomo-setup"
+#define DISCOVERY_PORT 5006
+#define DISCOVERY_QUERY "RF_TOMO_DISCOVER_V1"
+#define DISCOVERY_REPLY_PREFIX "RF_TOMO_HERE_V1:"
 
 typedef struct {
     uint8_t mac[6];
@@ -45,6 +49,9 @@ static int s_sock = -1;
 static struct sockaddr_in s_collector;
 static bool s_has_credentials = false;
 static bool s_csi_enabled = false;
+static volatile bool s_wifi_connected = false;
+static volatile bool s_collector_found = false;
+static bool s_discovery_task_started = false;
 static httpd_handle_t s_http_server = NULL;
 
 static const char SETUP_PAGE[] =
@@ -118,6 +125,7 @@ static void udp_task(void *arg)
 
     while (true) {
         if (xQueueReceive(s_csi_queue, &packet, portMAX_DELAY) != pdTRUE) continue;
+        if (!s_collector_found) continue;
         char mac[18];
         snprintf(mac, sizeof(mac), "%02X:%02X:%02X:%02X:%02X:%02X",
                  packet.mac[0], packet.mac[1], packet.mac[2],
@@ -149,6 +157,59 @@ static void udp_task(void *arg)
                 }
             }
         }
+    }
+}
+
+static void discovery_task(void *arg)
+{
+    (void)arg;
+    int broadcast_enabled = 1;
+    struct timeval timeout = {.tv_sec = 1, .tv_usec = 0};
+    (void)setsockopt(s_sock, SOL_SOCKET, SO_BROADCAST,
+                     &broadcast_enabled, sizeof(broadcast_enabled));
+    (void)setsockopt(s_sock, SOL_SOCKET, SO_RCVTIMEO,
+                     &timeout, sizeof(timeout));
+
+    struct sockaddr_in broadcast = {0};
+    broadcast.sin_family = AF_INET;
+    broadcast.sin_port = htons(DISCOVERY_PORT);
+    broadcast.sin_addr.s_addr = inet_addr("255.255.255.255");
+
+    while (true) {
+        if (!s_wifi_connected) {
+            s_collector_found = false;
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
+
+        const char query[] = DISCOVERY_QUERY;
+        (void)sendto(s_sock, query, sizeof(query) - 1, 0,
+                     (struct sockaddr *)&broadcast, sizeof(broadcast));
+
+        char reply[64] = {0};
+        struct sockaddr_in sender = {0};
+        socklen_t sender_len = sizeof(sender);
+        int received = recvfrom(s_sock, reply, sizeof(reply) - 1, 0,
+                                (struct sockaddr *)&sender, &sender_len);
+        if (received > 0) {
+            reply[received] = '\0';
+            size_t prefix_len = strlen(DISCOVERY_REPLY_PREFIX);
+            if (strncmp(reply, DISCOVERY_REPLY_PREFIX, prefix_len) == 0) {
+                int port = atoi(reply + prefix_len);
+                if (port > 0 && port <= 65535) {
+                    s_collector.sin_family = AF_INET;
+                    s_collector.sin_addr = sender.sin_addr;
+                    s_collector.sin_port = htons((uint16_t)port);
+                    s_collector_found = true;
+                    ESP_LOGI(TAG, "Collector discovered at " IPSTR ":%d",
+                             IP2STR(&sender.sin_addr), port);
+                }
+            }
+        } else if (!s_collector_found) {
+            ESP_LOGI(TAG, "Searching for dashboard collector via UDP broadcast...");
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(3000));
     }
 }
 
@@ -327,6 +388,8 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
         if (s_has_credentials) (void)esp_wifi_connect();
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
         s_csi_enabled = false;
+        s_wifi_connected = false;
+        s_collector_found = false;
         if (s_has_credentials) {
             ESP_LOGW(TAG, "Router disconnected; retrying Wi-Fi connection");
             vTaskDelay(pdMS_TO_TICKS(250));
@@ -336,8 +399,14 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
         }
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)data;
+        s_wifi_connected = true;
+        s_collector_found = false;
         ESP_LOGI(TAG, "Connected to router. STA IP: " IPSTR, IP2STR(&event->ip_info.ip));
         enable_csi_capture();
+        if (!s_discovery_task_started) {
+            s_discovery_task_started = true;
+            xTaskCreate(discovery_task, "collector_discovery", 4096, NULL, 4, NULL);
+        }
     }
 }
 
@@ -413,7 +482,16 @@ void app_main(void)
     memset(&s_collector, 0, sizeof(s_collector));
     s_collector.sin_family = AF_INET;
     s_collector.sin_port = htons(CONFIG_TOMO_COLLECTOR_PORT);
-    s_collector.sin_addr.s_addr = inet_addr(CONFIG_TOMO_COLLECTOR_IP);
+    s_collector.sin_addr.s_addr = 0;
+    struct sockaddr_in local_addr = {0};
+    local_addr.sin_family = AF_INET;
+    local_addr.sin_port = htons(DISCOVERY_PORT);
+    local_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    if (bind(s_sock, (struct sockaddr *)&local_addr, sizeof(local_addr)) < 0) {
+        ESP_LOGE(TAG, "Could not bind discovery UDP port %d: errno=%d",
+                 DISCOVERY_PORT, errno);
+        return;
+    }
 
     xTaskCreate(udp_task, "csi_udp", 6144, NULL, 5, NULL);
     start_wifi_and_portal();
