@@ -34,6 +34,8 @@
 #define DISCOVERY_PORT 5006
 #define DISCOVERY_QUERY "RF_TOMO_DISCOVER_V1"
 #define DISCOVERY_REPLY_PREFIX "RF_TOMO_HERE_V1:"
+#define TEMP_COLLECTOR_IP "192.168.1.4"
+#define TEMP_COLLECTOR_PORT 5005
 
 typedef struct {
     uint8_t mac[6];
@@ -153,8 +155,8 @@ static void udp_task(void *arg)
                 if ((udp_sent_count % 25) == 1) {
                     ESP_LOGI(TAG, "UDP sent %lu CSI packets to %s:%u (last=%d bytes)",
                              (unsigned long)udp_sent_count,
-                             CONFIG_TOMO_COLLECTOR_IP,
-                             (unsigned)CONFIG_TOMO_COLLECTOR_PORT, sent);
+                             inet_ntoa(s_collector.sin_addr),
+                             (unsigned)ntohs(s_collector.sin_port), sent);
                 }
             }
         }
@@ -415,21 +417,15 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)data;
         s_wifi_connected = true;
-        s_collector_found = false;
-        s_discovery_broadcast_addr =
-            event->ip_info.ip.addr | ~event->ip_info.netmask.addr;
-        esp_ip4_addr_t discovery_broadcast = {
-            .addr = s_discovery_broadcast_addr
-        };
+        s_collector.sin_family = AF_INET;
+        s_collector.sin_port = htons(TEMP_COLLECTOR_PORT);
+        s_collector.sin_addr.s_addr = inet_addr(TEMP_COLLECTOR_IP);
+        s_collector_found = true;
         ESP_LOGI(TAG, "Connected to router. STA IP: " IPSTR,
                  IP2STR(&event->ip_info.ip));
-        ESP_LOGI(TAG, "Subnet discovery broadcast: " IPSTR,
-                 IP2STR(&discovery_broadcast));
+        ESP_LOGW(TAG, "TEMP DIRECT MODE: sending CSI to " TEMP_COLLECTOR_IP ":%d",
+                 TEMP_COLLECTOR_PORT);
         enable_csi_capture();
-        if (!s_discovery_task_started) {
-            s_discovery_task_started = true;
-            xTaskCreate(discovery_task, "collector_discovery", 4096, NULL, 4, NULL);
-        }
     }
 }
 
