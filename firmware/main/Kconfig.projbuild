@@ -10,7 +10,7 @@ config TOMO_WIFI_PASSWORD
 
 config TOMO_COLLECTOR_IP
     string "Collector IPv4 address"
-    default "192.168.1.100"
+    default "192.168.1.6"
 
 config TOMO_COLLECTOR_PORT
     int "Collector UDP port"
