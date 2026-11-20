@@ -1,0 +1,20 @@
+menu "RF Tomography"
+
+config TOMO_WIFI_SSID
+    string "Wi-Fi SSID"
+    default "YOUR_2G_WIFI"
+
+config TOMO_WIFI_PASSWORD
+    string "Wi-Fi password"
+    default ""
+
+config TOMO_COLLECTOR_IP
+    string "Collector IPv4 address"
+    default "192.168.1.100"
+
+config TOMO_COLLECTOR_PORT
+    int "Collector UDP port"
+    range 1 65535
+    default 5005
+
+endmenu
