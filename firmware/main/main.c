@@ -34,8 +34,6 @@
 #define DISCOVERY_PORT 5006
 #define DISCOVERY_QUERY "RF_TOMO_DISCOVER_V1"
 #define DISCOVERY_REPLY_PREFIX "RF_TOMO_HERE_V1:"
-#define TEMP_COLLECTOR_IP "192.168.1.4"
-#define TEMP_COLLECTOR_PORT 5005
 
 typedef struct {
     uint8_t mac[6];
@@ -417,14 +415,17 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)data;
         s_wifi_connected = true;
+        s_collector_found = false;
         s_collector.sin_family = AF_INET;
-        s_collector.sin_port = htons(TEMP_COLLECTOR_PORT);
-        s_collector.sin_addr.s_addr = inet_addr(TEMP_COLLECTOR_IP);
-        s_collector_found = true;
+        s_collector.sin_port = htons(CONFIG_TOMO_COLLECTOR_PORT);
+        s_collector.sin_addr.s_addr = 0;
+        /* Discover the dashboard host on this Wi-Fi subnet automatically. */
+        s_discovery_broadcast_addr =
+            event->ip_info.ip.addr | ~event->ip_info.netmask.addr;
         ESP_LOGI(TAG, "Connected to router. STA IP: " IPSTR,
                  IP2STR(&event->ip_info.ip));
-        ESP_LOGW(TAG, "TEMP DIRECT MODE: sending CSI to " TEMP_COLLECTOR_IP ":%d",
-                 TEMP_COLLECTOR_PORT);
+        ESP_LOGI(TAG, "Looking for dashboard on subnet broadcast " IPSTR,
+                 IP2STR((esp_ip4_addr_t *)&s_discovery_broadcast_addr));
         enable_csi_capture();
     }
 }
@@ -513,6 +514,14 @@ void app_main(void)
     }
 
     xTaskCreate(udp_task, "csi_udp", 6144, NULL, 5, NULL);
+    if (!s_discovery_task_started) {
+        if (xTaskCreate(discovery_task, "collector_discovery", 4096,
+                        NULL, 5, NULL) == pdPASS) {
+            s_discovery_task_started = true;
+        } else {
+            ESP_LOGE(TAG, "Could not start dashboard discovery task");
+        }
+    }
     start_wifi_and_portal();
     ESP_LOGI(TAG, "RF Tomography CSI node started; configure Wi-Fi through setup AP");
 }
