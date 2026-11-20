@@ -77,7 +77,15 @@ static void csi_rx_cb(void *ctx, wifi_csi_info_t *info)
     packet.len = (uint16_t)(info->len > CSI_MAX_BYTES ? CSI_MAX_BYTES : info->len);
     memcpy(packet.csi, info->buf, packet.len);
     packet.timestamp_us = esp_timer_get_time();
-    (void)xQueueSend(s_csi_queue, &packet, 0);
+    static uint32_t csi_rx_count = 0;
+    csi_rx_count++;
+    if ((csi_rx_count % 50) == 1) {
+        ESP_LOGI(TAG, "CSI callback received %lu frames; latest len=%u RSSI=%d",
+                 (unsigned long)csi_rx_count, packet.len, packet.rssi);
+    }
+    if (xQueueSend(s_csi_queue, &packet, 0) != pdTRUE) {
+        ESP_LOGW(TAG, "CSI queue full; packet dropped");
+    }
 }
 
 static void enable_csi_capture(void)
@@ -125,8 +133,20 @@ static void udp_task(void *arg)
         }
         if (used > 0 && used < (int)sizeof(json) - 3) {
             json[used++] = ']'; json[used++] = '}';
-            (void)sendto(s_sock, json, (size_t)used, 0,
-                         (struct sockaddr *)&s_collector, sizeof(s_collector));
+            int sent = sendto(s_sock, json, (size_t)used, 0,
+                              (struct sockaddr *)&s_collector, sizeof(s_collector));
+            static uint32_t udp_sent_count = 0;
+            if (sent < 0) {
+                ESP_LOGE(TAG, "UDP sendto failed: errno=%d", errno);
+            } else {
+                udp_sent_count++;
+                if ((udp_sent_count % 25) == 1) {
+                    ESP_LOGI(TAG, "UDP sent %lu CSI packets to %s:%u (last=%d bytes)",
+                             (unsigned long)udp_sent_count,
+                             CONFIG_TOMO_COLLECTOR_IP,
+                             (unsigned)CONFIG_TOMO_COLLECTOR_PORT, sent);
+                }
+            }
         }
     }
 }
