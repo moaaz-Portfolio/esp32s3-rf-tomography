@@ -35,10 +35,14 @@ The setup AP is protected with WPA2. Keep the setup password private and change 
 1. Install Python 3.10+ on the laptop.
 2. Open PowerShell in the project folder and run `python engine/dashboard.py` (no third-party Python packages are needed for the live monitor).
 3. Open `http://127.0.0.1:8080` on the laptop. From another device on the same Wi-Fi, use `http://<LAPTOP-IP>:8080`.
-4. Find the laptop IPv4 address with `ipconfig` (use the Wi-Fi adapter's IPv4 address, not the ESP32 address).
-5. Set `TOMO_COLLECTOR_IP` to that laptop IPv4 address and `TOMO_COLLECTOR_PORT` to `5005` in firmware `menuconfig`, rebuild and flash the firmware. The current default collector IP is `192.168.1.100`, which may not be your laptop.
-6. Allow Python through Windows Defender Firewall on Private networks, or allow inbound UDP port `5005` and TCP port `8080`.
-7. Keep the dashboard process running. The dashboard reports real incoming CSI packets; it does not fabricate data.
+4. The ESP32-S3 automatically discovers the dashboard on the same Wi-Fi subnet over UDP broadcast; no laptop IP needs to be hard-coded in the firmware.
+5. Allow inbound UDP ports `5005` (CSI data) and `5006` (discovery), plus TCP port `8080` (dashboard) through the laptop firewall. On Windows PowerShell (Run as Administrator):
+   ```powershell
+   New-NetFirewallRule -DisplayName "RF Tomography Dashboard TCP 8080" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow -Profile Any
+   New-NetFirewallRule -DisplayName "RF Tomography CSI UDP 5005" -Direction Inbound -Protocol UDP -LocalPort 5005 -Action Allow -Profile Any
+   New-NetFirewallRule -DisplayName "RF Tomography Discovery UDP 5006" -Direction Inbound -Protocol UDP -LocalPort 5006 -Action Allow -Profile Any
+   ```
+6. Keep the dashboard process running. Any device on the same LAN can open `http://<LAPTOP-IP>:8080`; CSI packets are sent to the laptop running the dashboard. The dashboard reports real incoming CSI packets; it does not fabricate data.
 
 The initial live monitor plots CSI amplitude and a relative per-device change indicator. It does not claim to provide a calibrated room reconstruction. The sample `engine/room.json` contains placeholder MAC addresses and coordinates; replace them with measured transmitter MAC addresses and positions before using the tomography solver.
 
