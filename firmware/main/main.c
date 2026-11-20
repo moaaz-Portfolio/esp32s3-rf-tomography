@@ -201,8 +201,12 @@ static void discovery_task(void *arg)
                     s_collector.sin_addr = sender.sin_addr;
                     s_collector.sin_port = htons((uint16_t)port);
                     s_collector_found = true;
-                    ESP_LOGI(TAG, "Collector discovered at " IPSTR ":%d",
-                             IP2STR(&sender.sin_addr), port);
+                    uint32_t ip = ntohl(sender.sin_addr.s_addr);
+                    ESP_LOGI(TAG, "Collector discovered at %u.%u.%u.%u:%d",
+                             (unsigned)((ip >> 24) & 0xFF),
+                             (unsigned)((ip >> 16) & 0xFF),
+                             (unsigned)((ip >> 8) & 0xFF),
+                             (unsigned)(ip & 0xFF), port);
                 }
             }
         } else if (!s_collector_found) {
