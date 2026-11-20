@@ -221,10 +221,11 @@ static esp_err_t save_handler(httpd_req_t *req)
 
     nvs_handle_t handle;
     esp_err_t err = nvs_open(WIFI_NVS_NAMESPACE, NVS_READWRITE, &handle);
+    bool nvs_opened = (err == ESP_OK);
     if (err == ESP_OK) err = nvs_set_str(handle, WIFI_NVS_SSID_KEY, ssid);
     if (err == ESP_OK) err = nvs_set_str(handle, WIFI_NVS_PASS_KEY, password);
     if (err == ESP_OK) err = nvs_commit(handle);
-    if (err == ESP_OK || handle) nvs_close(handle);
+    if (nvs_opened) nvs_close(handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Could not save Wi-Fi credentials: %s", esp_err_to_name(err));
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Could not save settings");
@@ -240,7 +241,7 @@ static esp_err_t save_handler(httpd_req_t *req)
 
     s_has_credentials = true;
     s_csi_enabled = false;
-    ESP_ERROR_CHECK(esp_wifi_disconnect());
+    (void)esp_wifi_disconnect();
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_cfg));
     esp_err_t connect_err = esp_wifi_connect();
 
