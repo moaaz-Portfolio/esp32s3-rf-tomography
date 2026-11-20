@@ -51,6 +51,7 @@ static bool s_has_credentials = false;
 static bool s_csi_enabled = false;
 static volatile bool s_wifi_connected = false;
 static volatile bool s_collector_found = false;
+static volatile uint32_t s_discovery_broadcast_addr = 0;
 static bool s_discovery_task_started = false;
 static httpd_handle_t s_http_server = NULL;
 
@@ -170,11 +171,6 @@ static void discovery_task(void *arg)
     (void)setsockopt(s_sock, SOL_SOCKET, SO_RCVTIMEO,
                      &timeout, sizeof(timeout));
 
-    struct sockaddr_in broadcast = {0};
-    broadcast.sin_family = AF_INET;
-    broadcast.sin_port = htons(DISCOVERY_PORT);
-    broadcast.sin_addr.s_addr = inet_addr("255.255.255.255");
-
     while (true) {
         if (!s_wifi_connected) {
             s_collector_found = false;
@@ -182,9 +178,24 @@ static void discovery_task(void *arg)
             continue;
         }
 
+        struct sockaddr_in broadcast = {0};
+        broadcast.sin_family = AF_INET;
+        broadcast.sin_port = htons(DISCOVERY_PORT);
+        broadcast.sin_addr.s_addr = s_discovery_broadcast_addr;
+        if (broadcast.sin_addr.s_addr == 0) {
+            broadcast.sin_addr.s_addr = inet_addr("255.255.255.255");
+        }
+
         const char query[] = DISCOVERY_QUERY;
-        (void)sendto(s_sock, query, sizeof(query) - 1, 0,
-                     (struct sockaddr *)&broadcast, sizeof(broadcast));
+        int sent_query = sendto(s_sock, query, sizeof(query) - 1, 0,
+                                (struct sockaddr *)&broadcast, sizeof(broadcast));
+        if (sent_query < 0) {
+            ESP_LOGE(TAG, "Discovery sendto failed: errno=%d", errno);
+        } else {
+            ESP_LOGI(TAG, "Discovery query sent to " IPSTR ":%d",
+                     IP2STR((esp_ip4_addr_t *)&broadcast.sin_addr),
+                     DISCOVERY_PORT);
+        }
 
         char reply[64] = {0};
         struct sockaddr_in sender = {0};
@@ -405,7 +416,15 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)data;
         s_wifi_connected = true;
         s_collector_found = false;
-        ESP_LOGI(TAG, "Connected to router. STA IP: " IPSTR, IP2STR(&event->ip_info.ip));
+        s_discovery_broadcast_addr =
+            event->ip_info.ip.addr | ~event->ip_info.netmask.addr;
+        esp_ip4_addr_t discovery_broadcast = {
+            .addr = s_discovery_broadcast_addr
+        };
+        ESP_LOGI(TAG, "Connected to router. STA IP: " IPSTR,
+                 IP2STR(&event->ip_info.ip));
+        ESP_LOGI(TAG, "Subnet discovery broadcast: " IPSTR,
+                 IP2STR(&discovery_broadcast));
         enable_csi_capture();
         if (!s_discovery_task_started) {
             s_discovery_task_started = true;
