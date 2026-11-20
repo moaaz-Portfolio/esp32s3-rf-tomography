@@ -1,0 +1,12 @@
+{
+  "room": {"width_m": 5.0, "height_m": 4.0},
+  "receiver": {"x": 0.25, "y": 2.0},
+  "grid": {"nx": 50, "ny": 40},
+  "links": {
+    "AA:BB:CC:DD:EE:01": {"x": 4.75, "y": 0.5},
+    "AA:BB:CC:DD:EE:02": {"x": 4.75, "y": 2.0},
+    "AA:BB:CC:DD:EE:03": {"x": 4.75, "y": 3.5}
+  },
+  "radio": {"frequency_hz": 2.437e9, "fresnel_scale": 0.6},
+  "solver": {"iterations": 100, "sparsity": 0.08, "tv_weight": 0.02}
+}
