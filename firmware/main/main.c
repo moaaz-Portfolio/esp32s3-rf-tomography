@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <inttypes.h>
 #include <ctype.h>
+#include <stdbool.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
