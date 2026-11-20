@@ -30,10 +30,21 @@ The setup AP is protected with WPA2. Keep the setup password private and change 
 
 ## Quick start
 
-1. Install Python dependencies: `python -m pip install -r engine/requirements.txt`.
-2. Start the collector: `python engine/collector.py --bind 0.0.0.0 --port 5005`.
-3. Configure the collector IPv4 address and UDP port in firmware menuconfig if the defaults do not match your computer.
-4. Flash the firmware, connect to `RF-TOMO-SETUP`, and configure router Wi-Fi through `http://192.168.4.1/`.
+### Live dashboard on your laptop
+
+1. Install Python 3.10+ on the laptop.
+2. Open PowerShell in the project folder and run `python engine/dashboard.py` (no third-party Python packages are needed for the live monitor).
+3. Open `http://127.0.0.1:8080` on the laptop. From another device on the same Wi-Fi, use `http://<LAPTOP-IP>:8080`.
+4. Find the laptop IPv4 address with `ipconfig` (use the Wi-Fi adapter's IPv4 address, not the ESP32 address).
+5. Set `TOMO_COLLECTOR_IP` to that laptop IPv4 address and `TOMO_COLLECTOR_PORT` to `5005` in firmware `menuconfig`, rebuild and flash the firmware. The current default collector IP is `192.168.1.100`, which may not be your laptop.
+6. Allow Python through Windows Defender Firewall on Private networks, or allow inbound UDP port `5005` and TCP port `8080`.
+7. Keep the dashboard process running. The dashboard reports real incoming CSI packets; it does not fabricate data.
+
+The initial live monitor plots CSI amplitude and a relative per-device change indicator. It does not claim to provide a calibrated room reconstruction. The sample `engine/room.json` contains placeholder MAC addresses and coordinates; replace them with measured transmitter MAC addresses and positions before using the tomography solver.
+
+### Optional reconstruction collector
+
+Install dependencies with `python -m pip install -r engine/requirements.txt`, then run `python engine/collector.py --bind 0.0.0.0 --port 5005` after calibrating `engine/room.json`.
 
 The GitHub Actions workflow builds the firmware and runs engine tests on pushes and pull requests. Firmware binaries are uploaded as workflow artifacts; tagged releases also publish a ZIP.
 
