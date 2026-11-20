@@ -1,0 +1,8 @@
+firmware/build/
+firmware/sdkconfig
+firmware/sdkconfig.old
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+rf_heatmap.png
