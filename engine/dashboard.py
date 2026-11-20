@@ -68,6 +68,19 @@ setInterval(update,1000);update();window.addEventListener('resize',update);
 </script></body></html>"""
 
 
+def discovery_receiver(bind: str, discovery_port: int, csi_port: int) -> None:
+    """Answer ESP32 broadcast discovery requests with this laptop's source IP."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((bind, discovery_port))
+    print(f"Discovery: listening on {bind}:{discovery_port}")
+    response = f"RF_TOMO_HERE_V1:{csi_port}".encode("ascii")
+    while True:
+        payload, address = sock.recvfrom(256)
+        if payload.strip() == b"RF_TOMO_DISCOVER_V1":
+            sock.sendto(response, address)
+
+
 def udp_receiver(bind: str, port: int) -> None:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind((bind, port))
@@ -155,11 +168,14 @@ def main() -> None:
     parser.add_argument("--udp-port", type=int, default=5005)
     args = parser.parse_args()
     threading.Thread(target=udp_receiver, args=(args.udp_bind, args.udp_port), daemon=True).start()
+    threading.Thread(target=discovery_receiver,
+                     args=(args.udp_bind, 5006, args.udp_port), daemon=True).start()
     Handler.udp_port = args.udp_port
     server = ThreadingHTTPServer((args.host, args.http_port), Handler)
     print(f"Dashboard: http://127.0.0.1:{args.http_port}")
     print(f"Network:   http://<LAPTOP-IP>:{args.http_port}")
     print(f"UDP CSI:   {args.udp_bind}:{args.udp_port}")
+    print("UDP discovery: port 5006")
     print("Waiting for ESP32-S3 CSI packets...")
     try:
         server.serve_forever()
