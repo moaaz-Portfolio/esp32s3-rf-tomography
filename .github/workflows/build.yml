@@ -32,6 +32,8 @@ jobs:
           target: esp32s3
           path: firmware
           command: idf.py build
+      - name: Generate browser flasher manifest and copy images
+        run: python tools/generate_web_manifest.py
       - uses: actions/upload-artifact@v4
         with:
           name: esp32s3-rf-tomography-firmware
@@ -41,6 +43,34 @@ jobs:
             firmware/build/partition_table/*.bin
             firmware/build/flasher_args.json
           if-no-files-found: error
+      - name: Upload GitHub Pages site
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pages-site
+          path: web
+          if-no-files-found: error
+
+  deploy-pages:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: [python-tests, firmware]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pages-site
+          path: web
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+      - id: deployment
+        uses: actions/deploy-pages@v4
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
